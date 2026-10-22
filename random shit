@@ -1,0 +1,482 @@
+idk why you need it but here the script,this is Display manager,you need to put it in ../usr/bin (yes this for termux only)
+
+#!/bin/bash
+
+# Цвета для красоты
+GREEN='\033[0;32m'
+CYAN='\033[0;36m'
+YELLOW='\033[1;33m'
+NC='\033[0m'
+
+echo -e "${CYAN}=== Installation of Maxwell's Scripts ===${NC}"
+
+# 1. Определяем папку bin (для Termux это $PREFIX/bin, для Linux ~/.local/bin)
+if [ -n "$PREFIX" ]; then
+    BIN_DIR="$PREFIX/bin"
+else
+    BIN_DIR="$HOME/.local/bin"
+    mkdir -p "$BIN_DIR"
+fi
+
+# 2. Ссылка на твой репозиторий (ЗАМЕНИ НА СВОЮ!)
+REPO_URL="https://raw.githubusercontent.com/ТВОЙ_НИК/ТВОЙ_РЕПОЗИТОРИЙ/main"
+
+# 3. Список скриптов, которые нужно скачать
+SCRIPTS=("todm" "teub")
+
+echo -e "${YELLOW}Downloading scripts to $BIN_DIR...${NC}"
+
+cd "$BIN_DIR" || exit 1
+
+for script in "${SCRIPTS[@]}"; do
+    echo -n "  -> Installing $script... "
+    # Скачиваем файл с GitHub
+    curl -sL "$REPO_URL/$script" -o "$script"
+    
+    # Делаем его исполняемым
+    chmod +x "$script"
+    
+    if [ -f "$script" ]; then
+        echo -e "${GREEN}[OK]${NC}"
+    else
+        echo -e "\033[0;31m[FAILED]${NC}"
+    fi
+done
+
+# 4. Возвращаемся в домашнюю папку (как ты просил "просто пишет cd")
+cd ~
+
+# 5. Выводим финальное сообщение и список команд
+echo -e "\n${GREEN}todm/teub has been installed!${NC}"
+echo -e "${CYAN}This is the list of commands you need to remember:${NC}"
+echo "-----------------------------------------------"
+echo -e " ${YELLOW}todm${NC}  - Termux Only Display Manager"
+echo -e " ${YELLOW}teub${NC}  - GRUB but for Termux"
+echo "-----------------------------------------------"
+
+and this is Grub but for Termux 
+
+#!/data/data/com.termux/files/usr/bin/bash
+
+# ═══════════════════════════════════════════════
+#   TEUB — TErmux Universal Bootloader
+#  v1.0
+# ═══════════════════════════════════════════════
+
+CONF_MAIN="$HOME/.config/teub/entries.conf"
+CONF_EXT="$HOME/.config/teub/entries-external.conf"
+SOUND_DIR="$HOME/.config/teub/sounds"
+LOGO_DIR="$HOME/.config/teub/logos"
+
+# ─── Цвета ───                                                       CYAN='\033[0;36m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+WHITE='\033[1;37m'
+GRAY='\033[0;90m'
+MAGENTA='\033[0;35m'
+RED='\033[0;31m'
+BLUE='\033[0;34m'
+ORANGE='\033[0;33m'
+BOLD='\033[1m'
+BG_BLUE='\033[44m'
+NC='\033[0m'
+
+# ─── Ширина терминала ───
+TERM_WIDTH=$(tput cols 2>/dev/null || echo 80)
+
+# ─── Центрирование ───
+center_line() {
+    local text="$1"
+    local clean
+    clean=$(printf "%b" "$text" | sed 's/\x1b\[[0-9;]*m//g')
+    local len=${#clean}
+    local pad=$(( (TERM_WIDTH - len) / 2 ))
+    [ $pad -lt 0 ] && pad=0
+    printf "%*s" "$pad" ""
+    printf "%b\n" "$text"
+}
+
+# ─── Звуки ───
+play_sound() {
+    local file="$SOUND_DIR/$1"
+    [ ! -f "$file" ] && return 0
+    if command -v termux-media-player >/dev/null 2>&1; then
+        termux-media-player play "$file" >/dev/null 2>&1 &
+    elif command -v mpv >/dev/null 2>&1; then
+        mpv --no-video --really-quiet "$file" >/dev/null 2>&1 &
+    fi
+}
+
+# ─── Режимы запуска ───
+USE_EXTERNAL=0
+case "$1" in
+    --edit)          mkdir -p "$(dirname "$CONF_MAIN")"; nano "$CONF_MAIN"; exit 0 ;;
+    --edit-external) mkdir -p "$(dirname "$CONF_EXT")";  nano "$CONF_EXT";  exit 0 ;;
+    --external)      USE_EXTERNAL=1 ;;
+esac
+
+# ─── Загрузка конфига ───
+load_conf() {
+    if [ "$USE_EXTERNAL" -eq 1 ]; then
+        CONF="$CONF_EXT"
+    else
+        CONF="$CONF_MAIN"
+    fi
+
+    if [ ! -f "$CONF" ]; then
+        mkdir -p "$(dirname "$CONF")"
+        touch "$CONF"
+    fi
+
+    mapfile -t ENTRIES < <(grep -vE '^\s*#|^\s*$' "$CONF")
+}
+
+load_conf
+
+if [ ${#ENTRIES[@]} -eq 0 ]; then
+    echo "Список пуст. Открой: teub --edit$([ "$USE_EXTERNAL" -eq 1 ] && echo '-external')"
+    exit 1
+fi
+
+SEL=0
+
+# ─── Меню ───
+draw_menu() {
+    clear
+    echo
+    center_line "${CYAN}╔═══════════════════════════════════════════════╗${NC}"
+
+    if [ "$USE_EXTERNAL" -eq 1 ]; then
+        center_line "${CYAN}║${WHITE}${BOLD}        T E U B   v1.0   —   EXTERNAL${CYAN}         ║${NC}"
+    else
+        center_line "${CYAN}║${WHITE}${BOLD}        T E U B   v1.0   —   MAIN${CYAN}             ║${NC}"
+    fi
+
+    center_line "${CYAN}╚═══════════════════════════════════════════════╝${NC}"
+    echo
+    center_line "${GRAY}↑/↓ — выбор   Enter — пуск   E — список   Q — выход${NC}"
+    echo
+
+    local i
+    for i in "${!ENTRIES[@]}"; do
+        local name="${ENTRIES[$i]%%|*}"
+        if [ "$i" -eq "$SEL" ]; then
+            center_line "${BG_BLUE}${WHITE} ▶  ${name} ${NC}"
+        else
+            center_line "${GRAY}    ${name}${NC}"
+        fi
+    done
+}
+
+tput civis 2>/dev/null
+trap 'tput cnorm 2>/dev/null; echo; exit' INT TERM
+
+# ─── Цикл меню ───
+while true; do
+    draw_menu
+    IFS= read -rsn1 key
+
+    if [ "$key" = $'\x1b' ]; then
+        read -rsn2 -t 0.01 rest
+        case "$rest" in
+            '[A') ((SEL--)); play_sound "keypress.mp3" ;;
+            '[B') ((SEL++)); play_sound "keypress.mp3" ;;
+        esac
+        [ "$SEL" -lt 0 ] && SEL=$((${#ENTRIES[@]} - 1))
+        [ "$SEL" -ge ${#ENTRIES[@]} ] && SEL=0
+    elif [ "$key" = "e" ] || [ "$key" = "E" ]; then
+        if [ "$USE_EXTERNAL" -eq 1 ]; then
+            USE_EXTERNAL=0
+        else
+            USE_EXTERNAL=1
+        fi
+        load_conf
+        if [ ${#ENTRIES[@]} -eq 0 ]; then
+            if [ "$USE_EXTERNAL" -eq 1 ]; then USE_EXTERNAL=0; else USE_EXTERNAL=1; fi
+            load_conf
+        fi
+        SEL=0
+    elif [ -z "$key" ]; then
+        play_sound "select.mp3"
+        break
+    elif [ "$key" = "q" ] || [ "$key" = "Q" ]; then
+        tput cnorm 2>/dev/null
+        clear
+        exit 0
+    fi
+done
+
+LINE="${ENTRIES[$SEL]}"
+NAME="${LINE%%|*}"
+CMD="${LINE#*|}"
+tput cnorm 2>/dev/null
+
+# ─── Быстрый прогрессбар ───
+fast_progress() {
+    local msg="$1" width=36
+    echo
+    center_line "${YELLOW}${msg}${NC}"
+    echo
+    for i in $(seq 0 $width); do
+        local f=$i e=$((width-i)) bar=""
+        for ((j=0;j<f;j++)); do bar+="█"; done
+        for ((j=0;j<e;j++)); do bar+="░"; done
+        local line="[${GREEN}${bar}${NC}] $((i*100/width))%"
+        local clean="[$bar] $((i*100/width))%"
+        local pad=$(( (TERM_WIDTH - ${#clean}) / 2 ))
+        [ $pad -lt 0 ] && pad=0
+        printf "\r%*s" "$pad" ""
+        printf "%b" "$line"
+        sleep 0.03
+    done
+    echo
+}
+
+# ─── Случайный прогрессбар (5-45 сек) ───
+random_progress() {
+    local msg="$1"
+    local total_ticks=$((RANDOM % 400 + 50))
+    local width=40
+    local ticks_per_step=$((total_ticks / width + 1))
+
+    echo
+    center_line "${YELLOW}${msg}${NC}"
+    echo
+    for ((i=0; i<=width; i++)); do
+        local f=$i e=$((width-i)) bar=""
+        for ((j=0;j<f;j++)); do bar+="█"; done
+        for ((j=0;j<e;j++)); do bar+="░"; done
+        local line="[${GREEN}${bar}${NC}] $((i*100/width))%"
+        local clean="[$bar] $((i*100/width))%"
+        local pad=$(( (TERM_WIDTH - ${#clean}) / 2 ))
+        [ $pad -lt 0 ] && pad=0
+        printf "\r%*s" "$pad" ""
+        printf "%b" "$line"
+        for ((t=0; t<ticks_per_step; t++)); do
+            sleep 0.1
+        done
+    done
+    echo
+}
+
+# ─── Статусы ───
+status_ok()   { center_line "${GREEN}  [  ✓   ]${NC} $1"; }
+status_err()  { center_line "${RED}  [  ✗   ]${NC} $1"; play_sound "error.mp3"; }
+status_warn() { center_line "${YELLOW}  [  ⚠   ]${NC} $1"; }
+status_hint() { center_line "${CYAN}  [  ℹ   ]${NC} $1"; }
+status_yay()  { center_line "${GREEN}${BOLD}  [ YAY  ]${NC} $1"; }
+
+# ─── Логотипы ───
+show_logo() {
+    local distro="$1"
+
+    local custom="$LOGO_DIR/$distro.txt"
+    if [ -f "$custom" ]; then
+        while IFS= read -r line; do
+            center_line "$line"
+        done < "$custom"
+        return 0
+    fi
+
+    local logo_lines=()
+    case "$distro" in
+        void*)
+            IFS=$'\n' read -d '' -r -a logo_lines << 'EOF'
+    _______
+ _ \______ -
+| \  ___  \ |
+| | /   \ | |
+| | \___/ | |
+| \______ \_|
+ -_______\
+
+EOF
+            ;;
+        debian*)
+            IFS=$'\n' read -d '' -r -a logo_lines << 'EOF'
+  _____
+ /  __ \
+|  /    |
+|  \___-
+ -_____
+       \
+        |
+
+EOF
+            ;;
+        arch*|manjaro*)
+            IFS=$'\n' read -d '' -r -a logo_lines << 'EOF'
+      /\
+     /  \
+    /\   \
+   /      \
+  /   ,,   \
+ /   |  |  -\
+/_-''    ''-_\
+
+EOF
+            ;;
+        ubuntu*)
+            IFS=$'\n' read -d '' -r -a logo_lines << 'EOF'
+         _
+     ---(_)
+ _/  ---  \
+(_) |   |
+  \  --- _/
+     ---(_)
+
+EOF
+            ;;
+        alpine*)
+            IFS=$'\n' read -d '' -r -a logo_lines << 'EOF'
+       .---.
+      /     \
+     | () () |
+      \  ^  /
+       |||||
+       |||||
+
+EOF
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+
+    case "$distro" in
+        void*)     printf "%b" "${MAGENTA}" ;;
+        debian*)   printf "%b" "${RED}" ;;
+        arch*)     printf "%b" "${BLUE}" ;;
+        manjaro*)  printf "%b" "${GREEN}" ;;
+        ubuntu*)   printf "%b" "${ORANGE}" ;;
+        alpine*)   printf "%b" "${BLUE}" ;;
+    esac
+
+    for line in "${logo_lines[@]}"; do
+        center_line "$line"
+    done
+    printf "%b\n" "${NC}"
+}
+
+# ─── Автоопределение дистрибутива ───
+DISTRO="void"
+case "$NAME" in
+    *Void*|*void*)       DISTRO="void" ;;
+    *Debian*|*debian*)   DISTRO="debian" ;;
+    *Arch*|*arch*)       DISTRO="archlinux" ;;
+    *Manjaro*|*manjaro*) DISTRO="manjaro" ;;
+    *Ubuntu*|*ubuntu*)   DISTRO="ubuntu" ;;
+    *Alpine*|*alpine*)   DISTRO="alpine" ;;
+    *)                   DISTRO="void" ;;
+esac
+
+# ═══════════════════════════════════════════
+#              BOOT SEQUENCE
+# ═══════════════════════════════════════════
+clear
+play_sound "boot.mp3"
+echo
+center_line "${CYAN}${BOLD}══════════════════════════════════════════════${NC}"
+center_line "${WHITE}${BOLD}      SYSTEM BOOT: ${NAME}${NC}"
+center_line "${CYAN}${BOLD}══════════════════════════════════════════════${NC}"
+echo
+sleep 0.6
+
+# ─── Фаза 1: Ядро ───
+center_line "${GRAY}─── Фаза 1: Инициализация ядра ───${NC}"
+echo
+fast_progress "Loading bootstrap"
+fast_progress "Mounting virtual filesystems"
+fast_progress "Mounting /tmp"
+fast_progress "Starting services"
+fast_progress "checking drivers"
+status_err "No drivers found (not even shitty nouveau)"
+echo
+sleep 0.3
+
+# ─── Фаза 2: Диагностика ───
+center_line "${GRAY}─── Фаза 2: Диагностика ───${NC}"
+echo
+status_ok "checking system stability"
+sleep 0.15
+status_err "Wayland cannot be used, switching to x11"
+sleep 0.15
+status_ok "RAM test pass"
+sleep 0.15
+status_warn "D-Bus kinda working"
+sleep 0.15
+status_warn "probing hardware acceleration"
+sleep 0.3
+status_err "/dev/dri not found"
+sleep 0.15
+status_err "No hardware acceleration working"
+sleep 0.15
+status_hint "please root your device and give root to termux"
+sleep 0.4
+
+# ─── Фаза 3: Initramfs ───
+center_line "${GRAY}─── Фаза 3: Загрузка initramfs ───${NC}"
+echo
+fast_progress "loading initram"
+status_ok "initram loaded"
+sleep 0.2
+echo
+
+# ─── Фаза 4: Jobs ───
+center_line "${GRAY}─── Фаза 4: Запуск служб ───${NC}"
+echo
+center_line "jobs running 0/3"
+fast_progress "starting job1"
+sleep 0.15
+center_line "jobs running 1/3"
+fast_progress "starting job2"
+sleep 0.15
+center_line "jobs running 2/3"
+fast_progress "starting job3"
+sleep 0.15
+status_ok "All jobs running"
+sleep 0.15
+echo
+
+# ─── Фаза 5: Системные цели ───
+status_ok "Reached target Basic System"
+sleep 0.15
+status_ok "Started User Manager"
+sleep 0.15
+status_ok "Mounted /home"
+sleep 0.15
+status_ok "Started Journal Service"
+sleep 0.15
+status_ok "Reached target Multi-User System"
+sleep 0.3
+echo
+
+# ─── Логотип ───
+clear
+sleep 0.3
+echo
+show_logo "$DISTRO"
+echo
+sleep 0.4
+
+# ─── Финальный прогресс ───
+fast_progress "preloading configs"
+random_progress "Starting session"
+
+echo
+status_ok "loading protocol"
+sleep 0.2
+status_yay "booting!"
+play_sound "success.mp3"
+echo
+sleep 0.6
+
+# ─── ЗАПУСК ───
+clear
+center_line "${GREEN}${BOLD}╔══════════════════════════════════╗${NC}"
+center_line "${GREEN}${BOLD}║         WELCOME, USER            ║${NC}"
+center_line "${GREEN}${BOLD}║         have fun!                ║${NC}"
+center_line "${GREEN}${BOLD}╚══════════════════════════════════╝${NC}"
+echo
+sleep 0.8
+exec $CMD
